@@ -1,12 +1,16 @@
 package com.lab.controller;
 
 import com.lab.dao.UserDAO;
+import com.lab.dao.NotificationDAO;
 import com.lab.model.ClubMember;
 import com.lab.model.ClubCommittee;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.sql.SQLException;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import javax.servlet.ServletException;
 import javax.servlet.annotation.MultipartConfig;
 import javax.servlet.annotation.WebServlet;
@@ -20,14 +24,14 @@ import javax.servlet.http.Part;
 // @MultipartConfig IS REQUIRED FOR CSV FILE UPLOADS
 // This annotation tells Tomcat that this Servlet will accept multipart/form-data
 // =========================================================================
-@MultipartConfig 
+@MultipartConfig
 @WebServlet(name = "MemberServlet", urlPatterns = {"/MemberServlet"})
 public class MemberServlet extends HttpServlet {
 
     @Override
     protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
         HttpSession session = request.getSession();
-        
+
         // Security: Ensure only the ADVISOR can access the Manage Members page
         if (!"ADVISOR".equals(session.getAttribute("userRole"))) {
             response.sendRedirect("login.jsp?error=unauthorized");
@@ -35,11 +39,11 @@ public class MemberServlet extends HttpServlet {
         }
 
         UserDAO dao = new UserDAO();
-        
+
         // Fetch both lists independently to populate the two separate HTML tables
         request.setAttribute("memberList", dao.getAllStandardMembers());
         request.setAttribute("committeeList", dao.getAllCommitteeMembers());
-        
+
         // Dispatch the data to the JSP view
         request.getRequestDispatcher("manageMembers.jsp").forward(request, response);
     }
@@ -47,7 +51,7 @@ public class MemberServlet extends HttpServlet {
     @Override
     protected void doPost(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
         HttpSession session = request.getSession();
-        
+
         // Security Check: Block unauthorized POST requests
         if (!"ADVISOR".equals(session.getAttribute("userRole"))) {
             response.sendRedirect("login.jsp");
@@ -56,6 +60,7 @@ public class MemberServlet extends HttpServlet {
 
         String action = request.getParameter("action");
         UserDAO dao = new UserDAO();
+        NotificationDAO notifDAO = new NotificationDAO();
 
         /* ==========================================================
            ACTION 1: MANUALLY ADD A SINGLE USER
@@ -63,10 +68,12 @@ public class MemberServlet extends HttpServlet {
         if ("add".equals(action)) {
             String role = request.getParameter("role");
             boolean isSuccess = false;
+            String memberID = request.getParameter("memberID");
+            String name = request.getParameter("name");
 
             if ("COMMITTEE".equals(role)) {
                 ClubCommittee newCommittee = new ClubCommittee();
-                newCommittee.setCommitteeID(request.getParameter("memberID")); 
+                newCommittee.setCommitteeID(request.getParameter("memberID"));
                 newCommittee.setName(request.getParameter("name"));
                 newCommittee.setEmail(request.getParameter("email"));
                 newCommittee.setPassword(request.getParameter("password"));
@@ -74,66 +81,74 @@ public class MemberServlet extends HttpServlet {
                 newCommittee.setPosition(request.getParameter("position"));
                 newCommittee.setProgram(request.getParameter("program"));
                 newCommittee.setYear(Integer.parseInt(request.getParameter("year")));
-                
+
                 isSuccess = dao.registerCommittee(newCommittee);
             } else {
                 ClubMember newMember = new ClubMember();
-                newMember.setMemberID(request.getParameter("memberID")); 
+                newMember.setMemberID(request.getParameter("memberID"));
                 newMember.setName(request.getParameter("name"));
                 newMember.setEmail(request.getParameter("email"));
                 newMember.setPassword(request.getParameter("password"));
                 newMember.setPhoneNo(request.getParameter("phoneNo"));
                 newMember.setProgram(request.getParameter("program"));
                 newMember.setYear(Integer.parseInt(request.getParameter("year")));
-                
+
                 isSuccess = dao.registerMember(newMember);
             }
 
-            if (isSuccess) response.sendRedirect("MemberServlet?msg=added");
-            else response.sendRedirect("MemberServlet?error=addFailed");
-        } 
-        
-        /* ==========================================================
+            if (isSuccess) {
+                try {
+                    // NOTIFICATION UX FIX: Added clickable link for Manual Add
+                    notifDAO.addNotification(memberID, "🎉 Welcome to COMTECH!", "Hello " + name + ", your account has been manually created by the club advisor. <a href='ProfileServlet' style='color: #0033a0; font-weight: bold; text-decoration: underline;'>Click here to manage your profile and update your password</a>.");
+                } catch (SQLException ex) {
+                    Logger.getLogger(MemberServlet.class.getName()).log(Level.SEVERE, null, ex);
+                } catch (ClassNotFoundException ex) {
+                    Logger.getLogger(MemberServlet.class.getName()).log(Level.SEVERE, null, ex);
+                }
+
+                response.sendRedirect("MemberServlet?msg=added");
+            } else {
+                response.sendRedirect("MemberServlet?error=addFailed");
+            }
+        } /* ==========================================================
            ACTION 2: DELETE A USER
-           ========================================================== */
-        else if ("delete".equals(action)) {
-            String memberId = request.getParameter("memberId"); 
-            if (dao.deleteMember(memberId)) response.sendRedirect("MemberServlet?msg=deleted");
-            else response.sendRedirect("MemberServlet?error=deleteFailed");
-        } 
-        
-        /* ==========================================================
+           ========================================================== */ else if ("delete".equals(action)) {
+            String memberId = request.getParameter("memberId");
+            if (dao.deleteMember(memberId)) {
+                response.sendRedirect("MemberServlet?msg=deleted");
+            } else {
+                response.sendRedirect("MemberServlet?error=deleteFailed");
+            }
+        } /* ==========================================================
            ACTION 3: BULK CSV IMPORT
-           ========================================================== */
-        else if ("import".equals(action)) {
+           ========================================================== */ else if ("import".equals(action)) {
             // Retrieve the uploaded file part from the HTTP request
             Part filePart = request.getPart("file");
-            
-            try (InputStream fileContent = filePart.getInputStream(); 
-                 BufferedReader reader = new BufferedReader(new InputStreamReader(fileContent))) {
+
+            try (InputStream fileContent = filePart.getInputStream(); BufferedReader reader = new BufferedReader(new InputStreamReader(fileContent))) {
 
                 String line;
                 boolean isFirstLine = true;
-                
+
                 // Read the CSV file line by line
                 while ((line = reader.readLine()) != null) {
-                    
+
                     // Skip the first row (CSV Headers)
-                    if (isFirstLine) { 
-                        isFirstLine = false; 
-                        continue; 
+                    if (isFirstLine) {
+                        isFirstLine = false;
+                        continue;
                     }
-                    
+
                     // Split the comma-separated values into an array
                     String[] data = line.split(",");
-                    
+
                     // Validate that the row contains all 7 required columns
-                    if (data.length >= 7) { 
+                    if (data.length >= 7) {
                         String name = data[0].trim();
                         String email = data[1].trim();
                         String phone = data[2].trim();
                         String userRole = data[3].trim().toUpperCase();
-                        String progOrPos = data[4].trim(); 
+                        String progOrPos = data[4].trim();
                         int year = Integer.parseInt(data[5].trim());
                         String studentId = data[6].trim();
 
@@ -148,8 +163,11 @@ public class MemberServlet extends HttpServlet {
                             newAJK.setPosition(progOrPos); // Map to Position
                             newAJK.setProgram("Computer Science"); // Default Program
                             newAJK.setYear(year);
-                            
+
                             dao.registerCommittee(newAJK);
+
+                            // NOTIFICATION UX FIX: Added clickable link for CSV Committee Import
+                            notifDAO.addNotification(studentId, "🎉 Welcome to COMTECH!", "Your Committee account has been officially created by the club advisor. Your default password is 'Comtech123!'. <a href='ProfileServlet' style='color: #0033a0; font-weight: bold; text-decoration: underline;'>Click here to manage your profile and change your password</a>.");
                         } else {
                             ClubMember newMem = new ClubMember();
                             newMem.setMemberID(studentId);
@@ -159,14 +177,16 @@ public class MemberServlet extends HttpServlet {
                             newMem.setPhoneNo(phone);
                             newMem.setProgram(progOrPos); // Map to Program
                             newMem.setYear(year);
-                            
+
                             dao.registerMember(newMem);
+                            // NOTIFICATION UX FIX: Added clickable link for CSV Member Import
+                            notifDAO.addNotification(studentId, "🎉 Welcome to COMTECH!", "Your Member account has been officially created by the club advisor. Your default password is 'Comtech123!'. <a href='ProfileServlet' style='color: #0033a0; font-weight: bold; text-decoration: underline;'>Click here to manage your profile and change your password</a>.");
                         }
                     }
                 }
                 // Redirect with success message once the loop completes
                 response.sendRedirect("MemberServlet?msg=added");
-                
+
             } catch (Exception e) {
                 e.printStackTrace();
                 response.sendRedirect("MemberServlet?error=importFailed");

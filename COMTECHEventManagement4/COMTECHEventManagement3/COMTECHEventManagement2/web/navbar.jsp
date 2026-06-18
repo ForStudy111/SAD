@@ -1,6 +1,15 @@
 <%@page contentType="text/html" pageEncoding="UTF-8"%>
+<%@ page import="com.lab.dao.NotificationDAO" %>
 <%
-    String navRole = (String) session.getAttribute("userRole"); 
+    String navRole = (String) session.getAttribute("userRole");
+    String currentUserId = (String) session.getAttribute("userId");
+    
+    // Quickly count how many notifications this user has
+    int notifCount = 0;
+    if (currentUserId != null) {
+        NotificationDAO ndao = new NotificationDAO();
+        notifCount = ndao.getUnreadCount(currentUserId);
+    }
 %>
 <div class="navbar">
     <div class="logo">
@@ -19,7 +28,9 @@
             <a href="EventServlet?action=advisorReservations">Reservations</a> 
             <a href="ReportFeedbackServlet?action=viewAll">Feedback</a>
             <a href="generateReportForm.jsp">Reports</a>
-            <a href="NotificationServlet">Notifications</a>
+            <a href="NotificationServlet">Notifications 
+                <% if(notifCount > 0) { %><span style="background: #ff4757; color: white; border-radius: 50%; padding: 2px 7px; font-size: 12px; font-weight: bold; margin-left: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.2);"><%= notifCount %></span><% } %>
+            </a>
 
         <% } else if ("COMMITTEE".equals(navRole)) { %>
             <a href="createEvent.jsp">Manage Events</a>
@@ -27,13 +38,17 @@
             <a href="EventServlet?action=committeeReservations">Reservations</a> 
             <a href="ReportFeedbackServlet?action=viewAll">Feedback</a>
             <a href="generateReportForm.jsp">Reports</a>
-            <a href="NotificationServlet">Notifications</a>
+            <a href="NotificationServlet">Notifications 
+                <% if(notifCount > 0) { %><span style="background: #ff4757; color: white; border-radius: 50%; padding: 2px 7px; font-size: 12px; font-weight: bold; margin-left: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.2);"><%= notifCount %></span><% } %>
+            </a>
 
         <% } else if ("MEMBER".equals(navRole)) { %>
             <a href="EventServlet?action=browse">Browse Events</a>        
             <a href="EventServlet?action=myReservations">My Reservations</a>
             <a href="ReportFeedbackServlet?action=viewAll">My Feedback</a>
-            <a href="NotificationServlet">Notifications</a>
+            <a href="NotificationServlet">Notifications 
+                <% if(notifCount > 0) { %><span style="background: #ff4757; color: white; border-radius: 50%; padding: 2px 7px; font-size: 12px; font-weight: bold; margin-left: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.2);"><%= notifCount %></span><% } %>
+            </a>
         <% } %>
 
         <div class="profile-menu">

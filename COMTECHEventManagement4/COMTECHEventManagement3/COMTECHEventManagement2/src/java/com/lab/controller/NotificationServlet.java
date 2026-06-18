@@ -63,10 +63,35 @@ public class NotificationServlet extends HttpServlet {
     protected void doGet(HttpServletRequest request, HttpServletResponse response)
             throws ServletException, IOException {
         HttpSession session = request.getSession();
-        String userId = (String) session.getAttribute("userId"); // CORRECT SESSION VARIABLE
+        String userId = (String) session.getAttribute("userId");
 
         if (userId != null) {
             NotificationDAO dao = new NotificationDAO();
+            String action = request.getParameter("action");
+
+            // Handle marking as read
+            if ("markRead".equals(action)) {
+                try {
+                    dao.markAsRead(Integer.parseInt(request.getParameter("id")));
+                } catch (SQLException ex) {
+                    Logger.getLogger(NotificationServlet.class.getName()).log(Level.SEVERE, null, ex);
+                } catch (ClassNotFoundException ex) {
+                    Logger.getLogger(NotificationServlet.class.getName()).log(Level.SEVERE, null, ex);
+                }
+                response.sendRedirect("NotificationServlet");
+                return;
+            } else if ("markAllRead".equals(action)) {
+                try {
+                    dao.markAllAsRead(userId);
+                } catch (SQLException ex) {
+                    Logger.getLogger(NotificationServlet.class.getName()).log(Level.SEVERE, null, ex);
+                } catch (ClassNotFoundException ex) {
+                    Logger.getLogger(NotificationServlet.class.getName()).log(Level.SEVERE, null, ex);
+                }
+                response.sendRedirect("NotificationServlet");
+                return;
+            }
+
             try {
                 request.setAttribute("notifList", dao.getUserNotifications(userId));
             } catch (SQLException ex) {
@@ -88,10 +113,42 @@ public class NotificationServlet extends HttpServlet {
      * @throws ServletException if a servlet-specific error occurs
      * @throws IOException if an I/O error occurs
      */
+    // Handles the Broadcast form submission
     @Override
     protected void doPost(HttpServletRequest request, HttpServletResponse response)
             throws ServletException, IOException {
-        processRequest(request, response);
+        HttpSession session = request.getSession();
+        String userId = (String) session.getAttribute("userId");
+        String userRole = (String) session.getAttribute("userRole");
+
+        String action = request.getParameter("action");
+
+        if ("broadcast".equals(action) && "COMMITTEE".equals(userRole)) {
+            String subject = request.getParameter("subject");
+            String message = request.getParameter("messageBody");
+
+            NotificationDAO dao = new NotificationDAO();
+            try {
+                // Send to everyone
+                dao.broadcastToAll(subject, message);
+            } catch (SQLException ex) {
+                Logger.getLogger(NotificationServlet.class.getName()).log(Level.SEVERE, null, ex);
+            } catch (ClassNotFoundException ex) {
+                Logger.getLogger(NotificationServlet.class.getName()).log(Level.SEVERE, null, ex);
+            }
+            try {
+                // Send personal confirmation to the sender
+                dao.addNotification(userId, "Broadcast Sent Successfully", "You broadcasted the following message: <br><em>" + message + "</em>");
+            } catch (SQLException ex) {
+                Logger.getLogger(NotificationServlet.class.getName()).log(Level.SEVERE, null, ex);
+            } catch (ClassNotFoundException ex) {
+                Logger.getLogger(NotificationServlet.class.getName()).log(Level.SEVERE, null, ex);
+            }
+
+            response.sendRedirect("NotificationServlet?msg=broadcastSuccess");
+        } else {
+            response.sendRedirect("NotificationServlet");
+        }
     }
 
     /**

@@ -5,6 +5,7 @@
 package com.lab.controller;
 
 import com.lab.dao.DBConnection;
+import com.lab.dao.NotificationDAO; // Imported NotificationDAO
 import java.io.*;
 import java.sql.*;
 import java.util.*;
@@ -82,7 +83,14 @@ public class ReportFeedbackServlet extends HttpServlet {
             st.setString(2, userID);
             st.setInt(3, Integer.parseInt(ratingStr));
             st.setString(4, comment);
-            st.executeUpdate();
+            int rowsAffected = st.executeUpdate();
+            
+            // NOTIFICATION: Feedback Submission
+            if (rowsAffected > 0) {
+                new NotificationDAO().addNotification(userID, "Feedback Submitted", "Your event feedback was successfully submitted. Thank you! <a href='ReportFeedbackServlet?action=viewAll'>View My Feedback</a>.");
+            } else {
+                new NotificationDAO().addNotification(userID, "Feedback Failed", "An error occurred. Your feedback creation was unsuccessful.");
+            }
             
             response.sendRedirect("ReportFeedbackServlet?action=viewAll&msg=Submitted");
         }
@@ -219,7 +227,11 @@ public class ReportFeedbackServlet extends HttpServlet {
             st.setString(2, replierID);
             st.setString(3, replierRole);
             st.setString(4, replyText);
-            st.executeUpdate();
+            
+            // NOTIFICATION: Find the member who owns this feedback and notify them
+            if (st.executeUpdate() > 0) {
+                new NotificationDAO().notifyFeedbackOwner(feedbackID, "Reply to Your Feedback", "A committee member/advisor has replied to your event feedback. <a href='ReportFeedbackServlet?action=viewAll'>Click here to read the reply</a>.");
+            }
             
             response.sendRedirect("ReportFeedbackServlet?action=viewReplies&feedbackID=" + feedbackID + "&msg=ReplySent");
         }

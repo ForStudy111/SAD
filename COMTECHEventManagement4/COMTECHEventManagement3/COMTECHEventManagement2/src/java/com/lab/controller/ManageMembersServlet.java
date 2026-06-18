@@ -4,9 +4,13 @@
  */
 package com.lab.controller;
 
+import com.lab.dao.NotificationDAO;
 import com.lab.dao.UserDAO;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.sql.SQLException;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import javax.servlet.ServletException;
 import javax.servlet.annotation.WebServlet;
 import javax.servlet.http.HttpServlet;
@@ -59,9 +63,9 @@ public class ManageMembersServlet extends HttpServlet {
     @Override
     protected void doGet(HttpServletRequest request, HttpServletResponse response)
             throws ServletException, IOException {
-        
+
         HttpSession session = request.getSession();
-        
+
         // Security: Ensure ONLY the Committee can access this page
         if (!"COMMITTEE".equals(session.getAttribute("userRole"))) {
             response.sendRedirect("login.jsp?error=unauthorized");
@@ -99,7 +103,43 @@ public class ManageMembersServlet extends HttpServlet {
     @Override
     protected void doPost(HttpServletRequest request, HttpServletResponse response)
             throws ServletException, IOException {
-        processRequest(request, response);
+        HttpSession session = request.getSession();
+        if (!"COMMITTEE".equals(session.getAttribute("userRole"))) {
+            response.sendRedirect("login.jsp");
+            return;
+        }
+
+        String action = request.getParameter("action");
+        String[] selectedMembers = request.getParameterValues("selectedMembers"); // Gets all checked boxes
+
+        if (selectedMembers != null && selectedMembers.length > 0) {
+            UserDAO userDAO = new UserDAO();
+            NotificationDAO notifDAO = new NotificationDAO();
+
+            if ("bulkDelete".equals(action)) {
+                for (String memberId : selectedMembers) {
+                    userDAO.deleteMember(memberId);
+                }
+                response.sendRedirect("ManageMembersServlet?msg=bulkDeleted");
+
+            } else if ("sendWarning".equals(action)) {
+                for (String memberId : selectedMembers) {
+                    try {
+                        notifDAO.addNotification(memberId, "COMTECH Inactivity Warning",
+                                "Dear member, we have noticed a lack of participation in recent club activities. "
+                                        + "Please stay focused and engage in upcoming events to maintain your active status in the club.");
+                    } catch (SQLException ex) {
+                        Logger.getLogger(ManageMembersServlet.class.getName()).log(Level.SEVERE, null, ex);
+                    } catch (ClassNotFoundException ex) {
+                        Logger.getLogger(ManageMembersServlet.class.getName()).log(Level.SEVERE, null, ex);
+                    }
+                }
+                response.sendRedirect("ManageMembersServlet?msg=warningSent");
+            }
+        } else {
+            // If they clicked a button without checking any boxes
+            response.sendRedirect("ManageMembersServlet?error=noneSelected");
+        }
     }
 
     /**

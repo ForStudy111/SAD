@@ -17,6 +17,7 @@ public class Notification {
     private String subject;
     private String messageBody;
     private Timestamp sendDate;
+    private boolean isRead;
 
     public Notification() {
     }
@@ -59,5 +60,13 @@ public class Notification {
 
     public void setSendDate(Timestamp sendDate) {
         this.sendDate = sendDate;
+    }
+
+    public boolean isRead() {
+        return isRead;
+    }
+
+    public void setRead(boolean isRead) {
+        this.isRead = isRead;
     }
 }

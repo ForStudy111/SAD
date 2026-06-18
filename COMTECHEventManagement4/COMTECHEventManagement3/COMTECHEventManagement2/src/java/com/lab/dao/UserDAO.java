@@ -12,42 +12,112 @@ import java.util.List;
 public class UserDAO {
 
     /* ==========================================================
-       CREATE OPERATIONS (INSERT)
+       CREATE OPERATIONS (INSERT INTO BOTH TABLES)
        ========================================================== */
     // Register a new standard Club Member
     public boolean registerMember(ClubMember member) {
-        String sql = "INSERT INTO ClubMember (memberID, name, email, password, phoneNo, program, year) VALUES (?, ?, ?, ?, ?, ?, ?)";
-        try (Connection conn = DBConnection.getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setString(1, member.getMemberID());
-            ps.setString(2, member.getName());
-            ps.setString(3, member.getEmail());
-            ps.setString(4, member.getPassword());
-            ps.setString(5, member.getPhoneNo());
-            ps.setString(6, member.getProgram());
-            ps.setInt(7, member.getYear());
-            return ps.executeUpdate() > 0;
+        Connection conn = null;
+        try {
+            conn = DBConnection.getConnection();
+            conn.setAutoCommit(false); // Start transaction
+
+            // 1. Insert into central users table
+            String sqlUser = "INSERT INTO users (userID, password, fullName, email, role) VALUES (?, ?, ?, ?, 'MEMBER')";
+            try (PreparedStatement ps1 = conn.prepareStatement(sqlUser)) {
+                ps1.setString(1, member.getMemberID());
+                ps1.setString(2, member.getPassword());
+                ps1.setString(3, member.getName());
+                ps1.setString(4, member.getEmail());
+                ps1.executeUpdate();
+            }
+
+            // 2. Insert into specific clubmember table
+            String sqlMember = "INSERT INTO clubmember (memberID, name, email, password, phoneNo, program, year) VALUES (?, ?, ?, ?, ?, ?, ?)";
+            try (PreparedStatement ps2 = conn.prepareStatement(sqlMember)) {
+                ps2.setString(1, member.getMemberID());
+                ps2.setString(2, member.getName());
+                ps2.setString(3, member.getEmail());
+                ps2.setString(4, member.getPassword());
+                ps2.setString(5, member.getPhoneNo());
+                ps2.setString(6, member.getProgram());
+                ps2.setInt(7, member.getYear());
+                ps2.executeUpdate();
+            }
+
+            conn.commit(); // Save both successfully
+            return true;
         } catch (Exception e) {
+            try {
+                if (conn != null) {
+                    conn.rollback();
+                }
+            } catch (Exception ex) {
+                ex.printStackTrace();
+            }
             e.printStackTrace();
             return false;
+        } finally {
+            try {
+                if (conn != null) {
+                    conn.setAutoCommit(true);
+                }
+            } catch (Exception ex) {
+                ex.printStackTrace();
+            }
         }
     }
 
     // Register a new Club Committee Member (AJK)
     public boolean registerCommittee(ClubCommittee committee) {
-        String sql = "INSERT INTO ClubCommittee (committeeID, name, email, password, phoneNo, position, program, year) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
-        try (Connection conn = DBConnection.getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setString(1, committee.getCommitteeID());
-            ps.setString(2, committee.getName());
-            ps.setString(3, committee.getEmail());
-            ps.setString(4, committee.getPassword());
-            ps.setString(5, committee.getPhoneNo());
-            ps.setString(6, committee.getPosition());
-            ps.setString(7, committee.getProgram());
-            ps.setInt(8, committee.getYear());
-            return ps.executeUpdate() > 0;
+        Connection conn = null;
+        try {
+            conn = DBConnection.getConnection();
+            conn.setAutoCommit(false); // Start transaction
+
+            // 1. Insert into central users table
+            String sqlUser = "INSERT INTO users (userID, password, fullName, email, role) VALUES (?, ?, ?, ?, 'COMMITTEE')";
+            try (PreparedStatement ps1 = conn.prepareStatement(sqlUser)) {
+                ps1.setString(1, committee.getCommitteeID());
+                ps1.setString(2, committee.getPassword());
+                ps1.setString(3, committee.getName());
+                ps1.setString(4, committee.getEmail());
+                ps1.executeUpdate();
+            }
+
+            // 2. Insert into specific clubcommittee table
+            String sqlCom = "INSERT INTO clubcommittee (committeeID, name, email, password, phoneNo, position, program, year) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+            try (PreparedStatement ps2 = conn.prepareStatement(sqlCom)) {
+                ps2.setString(1, committee.getCommitteeID());
+                ps2.setString(2, committee.getName());
+                ps2.setString(3, committee.getEmail());
+                ps2.setString(4, committee.getPassword());
+                ps2.setString(5, committee.getPhoneNo());
+                ps2.setString(6, committee.getPosition());
+                ps2.setString(7, committee.getProgram());
+                ps2.setInt(8, committee.getYear());
+                ps2.executeUpdate();
+            }
+
+            conn.commit(); // Save both successfully
+            return true;
         } catch (Exception e) {
+            try {
+                if (conn != null) {
+                    conn.rollback();
+                }
+            } catch (Exception ex) {
+                ex.printStackTrace();
+            }
             e.printStackTrace();
             return false;
+        } finally {
+            try {
+                if (conn != null) {
+                    conn.setAutoCommit(true);
+                }
+            } catch (Exception ex) {
+                ex.printStackTrace();
+            }
         }
     }
 
@@ -143,35 +213,53 @@ public class UserDAO {
     }
 
     /* ==========================================================
-       DELETE OPERATION
+       DELETE OPERATION (DELETE FROM BOTH TABLES)
        ========================================================== */
-    // Delete a member (Scans both tables to ensure deletion works regardless of role)
     public boolean deleteMember(String id) {
         boolean isDeleted = false;
+        Connection conn = null;
+        try {
+            conn = DBConnection.getConnection();
+            conn.setAutoCommit(false);
 
-        // Attempt deletion from Standard Member table first
-        String sqlMem = "DELETE FROM ClubMember WHERE memberID = ?";
-        try (Connection conn = DBConnection.getConnection(); PreparedStatement ps = conn.prepareStatement(sqlMem)) {
-            ps.setString(1, id);
-            if (ps.executeUpdate() > 0) {
-                isDeleted = true;
+            // 1. Delete from specific tables first
+            try (PreparedStatement psMem = conn.prepareStatement("DELETE FROM clubmember WHERE memberID = ?")) {
+                psMem.setString(1, id);
+                psMem.executeUpdate();
             }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-
-        // Attempt deletion from Committee table
-        String sqlCom = "DELETE FROM ClubCommittee WHERE committeeID = ?";
-        try (Connection conn = DBConnection.getConnection(); PreparedStatement ps = conn.prepareStatement(sqlCom)) {
-            ps.setString(1, id);
-            if (ps.executeUpdate() > 0) {
-                isDeleted = true;
+            try (PreparedStatement psCom = conn.prepareStatement("DELETE FROM clubcommittee WHERE committeeID = ?")) {
+                psCom.setString(1, id);
+                psCom.executeUpdate();
             }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
 
-        return isDeleted; // Returns true if it successfully deleted from either table
+            // 2. Delete from central users table
+            try (PreparedStatement psUsers = conn.prepareStatement("DELETE FROM users WHERE userID = ?")) {
+                psUsers.setString(1, id);
+                if (psUsers.executeUpdate() > 0) {
+                    isDeleted = true;
+                }
+            }
+
+            conn.commit();
+        } catch (Exception e) {
+            try {
+                if (conn != null) {
+                    conn.rollback();
+                }
+            } catch (Exception ex) {
+                ex.printStackTrace();
+            }
+            e.printStackTrace();
+        } finally {
+            try {
+                if (conn != null) {
+                    conn.setAutoCommit(true);
+                }
+            } catch (Exception ex) {
+                ex.printStackTrace();
+            }
+        }
+        return isDeleted;
     }
 
     /* ==========================================================

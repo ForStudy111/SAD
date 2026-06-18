@@ -36,7 +36,7 @@
             <div class="card"><h3>Monthly Reports</h3><p>View analytics.</p><a href="generateReportForm.jsp" class="btn btn-blue">View Reports</a></div>
         <% } else if ("COMMITTEE".equals(role)) { %>
             <div class="card"><h3>Create Event</h3><p>Draft new event proposals.</p><a href="createEvent.jsp" class="btn btn-green">Draft Proposal</a></div>
-            <div class="card"><h3>Send Notifications</h3><p>Broadcast reminders.</p><a href="#" class="btn btn-blue" onclick="alert('Notification feature coming soon!')">Broadcast Message</a></div>
+            <div class="card"><h3>Send Notifications</h3><p>Broadcast reminders.</p><a href="notification.jsp" class="btn btn-blue">Broadcast Message</a></div>
             <div class="card"><h3>Review Feedback</h3><p>Moderate comments.</p><a href="ReportFeedbackServlet?action=viewAll" class="btn btn-blue">Moderate Feedback</a></div>
         <% } else if ("MEMBER".equals(role)) { %>
             <div class="card"><h3>Upcoming Events</h3><p>Browse events.</p><a href="EventServlet?action=browse" class="btn btn-green">Browse & RSVP</a></div>

@@ -1,11 +1,15 @@
 package com.lab.controller;
 
 import com.lab.dao.EventDAO;
+import com.lab.dao.NotificationDAO;
 import com.lab.model.Event;
 import java.io.IOException;
 import java.sql.Date;
+import java.sql.SQLException;
 import java.sql.Time;
 import java.util.List;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import javax.servlet.ServletException;
 import javax.servlet.annotation.WebServlet;
 import javax.servlet.http.HttpServlet;
@@ -68,12 +72,14 @@ public class EventServlet extends HttpServlet {
         HttpSession session = request.getSession();
         String role = (String) session.getAttribute("userRole");
         EventDAO dao = new EventDAO();
+        NotificationDAO notifDAO = new NotificationDAO(); // Initialize Notification DAO
 
         if (role == null) {
             response.sendRedirect("login.jsp?error=unauthorized");
             return;
         }
 
+        /* CREATE EVENT (COMMITTEE) */
         if ("create".equals(action) && "COMMITTEE".equals(role)) {
             Event e = new Event();
             e.setEventName(request.getParameter("eventName"));
@@ -86,32 +92,123 @@ public class EventServlet extends HttpServlet {
             e.setEventAJKs(request.getParameter("eventAJKs"));
 
             if (dao.addEvent(e, (String) session.getAttribute("userId"))) {
+                try {
+                    // NOTIFICATION: Alert Advisor of pending proposal
+                    notifDAO.notifyRole("ADVISOR", "Pending Event Proposal", "A new event ('" + e.getEventName() + "') is waiting for your approval. <a href='EventServlet?action=listPending'>Click here to view pending events</a>.");
+                } catch (SQLException ex) {
+                    Logger.getLogger(EventServlet.class.getName()).log(Level.SEVERE, null, ex);
+                } catch (ClassNotFoundException ex) {
+                    Logger.getLogger(EventServlet.class.getName()).log(Level.SEVERE, null, ex);
+                }
                 response.sendRedirect("EventServlet?action=listPending");
             } else {
                 response.sendRedirect("createEvent.jsp?error=true");
             }
-        } else if ("updateStatus".equals(action) && "ADVISOR".equals(role)) {
+            /* APPROVE / REJECT EVENT (ADVISOR) */
+        } /* APPROVE / REJECT EVENT (ADVISOR) */ else if ("updateStatus".equals(action) && "ADVISOR".equals(role)) {
             int id = Integer.parseInt(request.getParameter("eventID"));
-            dao.updateEventStatus(id, request.getParameter("status"), request.getParameter("comment"));
+            String status = request.getParameter("status");
+            String advisorID = (String) session.getAttribute("userId");
+
+            dao.updateEventStatus(id, status, request.getParameter("comment"));
+
+            // NOTIFICATIONS FOR APPROVAL/REJECTION
+            if ("Approved".equals(status)) {
+                try {
+                    notifDAO.addNotification(advisorID, "Event Approved", "You successfully approved the event.");
+                } catch (SQLException ex) {
+                    Logger.getLogger(EventServlet.class.getName()).log(Level.SEVERE, null, ex);
+                } catch (ClassNotFoundException ex) {
+                    Logger.getLogger(EventServlet.class.getName()).log(Level.SEVERE, null, ex);
+                }
+                try {
+                    notifDAO.notifyEventCreator(id, "Proposal Approved", "Your requested event has been officially approved!");
+                } catch (SQLException ex) {
+                    Logger.getLogger(EventServlet.class.getName()).log(Level.SEVERE, null, ex);
+                } catch (ClassNotFoundException ex) {
+                    Logger.getLogger(EventServlet.class.getName()).log(Level.SEVERE, null, ex);
+                }
+                try {
+                    notifDAO.broadcastToAll("New Event Available!", "A new event has just been approved and is open for registration. <a href='EventServlet?action=browse'>Browse Events</a>.");
+                } catch (SQLException ex) {
+                    Logger.getLogger(EventServlet.class.getName()).log(Level.SEVERE, null, ex);
+                } catch (ClassNotFoundException ex) {
+                    Logger.getLogger(EventServlet.class.getName()).log(Level.SEVERE, null, ex);
+                }
+            } else if ("Rejected".equals(status)) {
+                try {
+                    notifDAO.addNotification(advisorID, "Event Rejected", "You successfully rejected the event proposal.");
+                } catch (SQLException ex) {
+                    Logger.getLogger(EventServlet.class.getName()).log(Level.SEVERE, null, ex);
+                } catch (ClassNotFoundException ex) {
+                    Logger.getLogger(EventServlet.class.getName()).log(Level.SEVERE, null, ex);
+                }
+                try {
+                    notifDAO.notifyEventCreator(id, "Proposal Rejected", "Your requested event has been rejected by the advisor.");
+                } catch (SQLException ex) {
+                    Logger.getLogger(EventServlet.class.getName()).log(Level.SEVERE, null, ex);
+                } catch (ClassNotFoundException ex) {
+                    Logger.getLogger(EventServlet.class.getName()).log(Level.SEVERE, null, ex);
+                }
+            }
+
             response.sendRedirect("EventServlet?action=listPending");
-        } else if ("rsvp".equals(action) && "MEMBER".equals(role)) {
+        } /* RSVP (MEMBER) */ else if ("rsvp".equals(action) && "MEMBER".equals(role)) {
             int eventID = Integer.parseInt(request.getParameter("eventID"));
             String memberID = (String) session.getAttribute("userId");
 
             if (isOverlapping(memberID, eventID, dao)) {
                 session.setAttribute("showPopup", "true");
                 session.setAttribute("popupText", "Event overlap detected with an existing reservation!");
+
+                try {
+                    // NOTIFICATION: RSVP Failed
+                    notifDAO.addNotification(memberID, "RSVP Failed", "Your reservation was unsuccessful due to a time overlap with another event.");
+                } catch (SQLException ex) {
+                    Logger.getLogger(EventServlet.class.getName()).log(Level.SEVERE, null, ex);
+                } catch (ClassNotFoundException ex) {
+                    Logger.getLogger(EventServlet.class.getName()).log(Level.SEVERE, null, ex);
+                }
+
                 response.sendRedirect("EventServlet?action=browse");
             } else if (dao.registerForEvent(eventID, memberID)) {
+
+                try {
+                    // NOTIFICATION: RSVP Success
+                    notifDAO.addNotification(memberID, "RSVP Successful", "You successfully reserved your spot! <a href='EventServlet?action=myReservations'>View My Reservations</a>.");
+                } catch (SQLException ex) {
+                    Logger.getLogger(EventServlet.class.getName()).log(Level.SEVERE, null, ex);
+                } catch (ClassNotFoundException ex) {
+                    Logger.getLogger(EventServlet.class.getName()).log(Level.SEVERE, null, ex);
+                }
+
                 response.sendRedirect("EventServlet?action=browse&msg=rsvp_success");
             } else {
+                try {
+                    // NOTIFICATION: RSVP Failed (General)
+                    notifDAO.addNotification(memberID, "RSVP Failed", "Unfortunately, your event reservation was unsuccessful.");
+                } catch (SQLException ex) {
+                    Logger.getLogger(EventServlet.class.getName()).log(Level.SEVERE, null, ex);
+                } catch (ClassNotFoundException ex) {
+                    Logger.getLogger(EventServlet.class.getName()).log(Level.SEVERE, null, ex);
+                }
+
                 response.sendRedirect("EventServlet?action=browse&error=failed");
             }
-        } else if ("cancelRsvp".equals(action) && "MEMBER".equals(role)) {
+        } /* CANCEL RSVP (MEMBER) */ else if ("cancelRsvp".equals(action) && "MEMBER".equals(role)) {
             int eventID = Integer.parseInt(request.getParameter("eventID"));
             String memberID = (String) session.getAttribute("userId");
 
             if (dao.cancelReservation(eventID, memberID)) {
+                try {
+                    // NOTIFICATION: Cancel Success
+                    notifDAO.addNotification(memberID, "Reservation Cancelled", "You have successfully cancelled your event reservation.");
+                } catch (SQLException ex) {
+                    Logger.getLogger(EventServlet.class.getName()).log(Level.SEVERE, null, ex);
+                } catch (ClassNotFoundException ex) {
+                    Logger.getLogger(EventServlet.class.getName()).log(Level.SEVERE, null, ex);
+                }
+
                 response.sendRedirect("EventServlet?action=myReservations&msg=cancel_success");
             } else {
                 response.sendRedirect("EventServlet?action=myReservations&error=cancel_failed");
@@ -128,9 +225,9 @@ public class EventServlet extends HttpServlet {
     private boolean isOverlapping(String memberID, int newEventID, EventDAO dao) {
         // 1. Fetch current user's reservations
         List<Event> myEvents = dao.getMyReservations(memberID);
-        
+
         // 2. Fetch details of the event the user is attempting to register for
-        Event newEvent = getEventDetailsFromDAO(newEventID, dao); 
+        Event newEvent = getEventDetailsFromDAO(newEventID, dao);
 
         // 3. Safety: If event doesn't exist or user has no previous bookings, no overlap
         if (newEvent == null || myEvents == null || myEvents.isEmpty()) {
@@ -145,8 +242,8 @@ public class EventServlet extends HttpServlet {
                 // Standard interval overlap formula:
                 // An overlap occurs if the new event starts before the existing one ends,
                 // AND the new event ends after the existing one starts.
-                if (newEvent.getStartTime().before(e.getEndTime()) && 
-                    newEvent.getEndTime().after(e.getStartTime())) {
+                if (newEvent.getStartTime().before(e.getEndTime())
+                        && newEvent.getEndTime().after(e.getStartTime())) {
                     return true; // Overlap detected
                 }
             }
